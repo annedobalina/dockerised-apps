@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Trivia Game</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      margin: 0;
+      background: #f4f4f4;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: auto;
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+    }
+
+    .category-buttons,
+    .difficulty-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .category-btn,
+    .difficulty-btn {
+      flex: 1 1 30%;
+      margin: 5px;
+      padding: 10px;
+      font-size: 16px;
+      border: 2px solid black;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+
+    .geography { background: blue; color: white; }
+    .entertainment { background: pink; color: black; }
+    .history { background: yellow; color: black; }
+    .art { background: indigo; color: white; }
+    .science { background: darkgreen; color: white; }
+    .sports { background: orange; color: black; }
+    .general { background: red; color: white; }
+
+    .category-btn.active {
+      background: black !important;
+      color: white !important;
+    }
+
+    .difficulty-btn {
+      background: white;
+      color: black;
+    }
+
+    .difficulty-btn.active {
+      background: black;
+      color: white;
+    }
+
+    button {
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    #answers-list {
+      list-style: none;
+      padding-left: 0;
+      text-align: left;
+    }
+
+    #answers-list li {
+      padding: 5px 0;
+    }
+
+    #question {
+      margin-bottom: 10px;
+    }
+
+    .center-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        margin: 10px;
+        padding: 15px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Trivia Game</h1>
+
+    <div class="category-buttons">
+      <button class="category-btn geography" data-category="geography">Geography</button>
+      <button class="category-btn entertainment" data-category="film_and_tv">Entertainment</button>
+      <button class="category-btn history" data-category="history">History</button>
+      <button class="category-btn art" data-category="arts_and_literature">Art & Literature</button>
+      <button class="category-btn science" data-category="science">Science & Nature</button>
+      <button class="category-btn sports" data-category="sport_and_leisure">Sports & Leisure</button>
+      <button class="category-btn general" data-category="general_knowledge">General</button>
+    </div>
+
+    <div class="difficulty-buttons">
+      <button class="difficulty-btn" data-difficulty="easy">Easy</button>
+      <button class="difficulty-btn" data-difficulty="medium">Medium</button>
+      <button class="difficulty-btn" data-difficulty="hard">Hard</button>
+    </div>
+
+    <div class="center-section">
+      <button id="get-question">Get Question</button>
+
+      <div id="question-container" class="hidden">
+        <p id="question"></p>
+        <ul id="answers-list"></ul>
+        <button id="show-answer" class="hidden">Show Answer</button>
+        <p id="correct-answer" class="hidden"></p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const categoryButtons = document.querySelectorAll('.category-btn');
+      const difficultyButtons = document.querySelectorAll('.difficulty-btn');
+      const getQuestionBtn = document.getElementById('get-question');
+      const showAnswerBtn = document.getElementById('show-answer');
+      const questionText = document.getElementById('question');
+      const answerList = document.getElementById('answers-list');
+      const correctAnswerText = document.getElementById('correct-answer');
+      const questionContainer = document.getElementById('question-container');
+
+      let selectedCategory = '';
+      let selectedDifficulty = '';
+
+      categoryButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          selectedCategory = button.dataset.category;
+          categoryButtons.forEach(btn => btn.classList.remove('active'));
+          button.classList.add('active');
+        });
+      });
+
+      difficultyButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          selectedDifficulty = button.dataset.difficulty;
+          difficultyButtons.forEach(btn => btn.classList.remove('active'));
+          button.classList.add('active');
+        });
+      });
+
+      getQuestionBtn.addEventListener('click', () => {
+        if (!selectedCategory || !selectedDifficulty) {
+          alert("Please select both a category and difficulty.");
+          return;
+        }
+
+        fetch(`https://the-trivia-api.com/api/questions?categories=${selectedCategory}&difficulty=${selectedDifficulty}&limit=1`)
+          .then(res => res.json())
+          .then(data => {
+            const questionData = data[0];
+            questionText.textContent = questionData.question;
+
+            const allAnswers = [...questionData.incorrectAnswers, questionData.correctAnswer];
+            answerList.innerHTML = '';
+            allAnswers.sort(() => Math.random() - 0.5).forEach(answer => {
+              const li = document.createElement('li');
+              li.textContent = answer;
+              answerList.appendChild(li);
+            });
+
+            correctAnswerText.textContent = "Correct Answer: " + questionData.correctAnswer;
+            correctAnswerText.classList.add('hidden');
+            showAnswerBtn.classList.remove('hidden');
+            questionContainer.classList.remove('hidden');
+          });
+      });
+
+      showAnswerBtn.addEventListener('click', () => {
+        correctAnswerText.classList.remove('hidden');
+        showAnswerBtn.classList.add('hidden');
+      });
+    });
+  </script>
+</body>
+</html>
+

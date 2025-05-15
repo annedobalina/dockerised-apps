@@ -1,0 +1,218 @@
+#notes for reinstallation - IP address notations located only in pihole here and telegraf.conf file.  Everything else relies on hostnames!
+
+services:
+
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    environment:
+      TZ: "Europe/Berlin"
+      WEBPASSWORD: ""
+      DNSMASQ_USER: root
+      FTLCONF_webserver_api_password: ""
+      DNS1: 1.1.1.1
+      DNS2: 1.0.0.1
+      ServerIP: 192.168.178.3
+      FTLCONF_misc_etc_dnsmasq_d: true
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    volumes:
+      - ./pihole/etc-pihole/:/etc/pihole/
+      - ./pihole/etc-dnsmasq.d/:/etc/dnsmasq.d/
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "81:80"
+    cap_add:
+      - NET_ADMIN
+    restart: always
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pihole.entrypoints=web"
+      - "traefik.http.services.pihole.loadbalancer.server.port=80"
+
+  traefik:
+    image: traefik:latest 
+    restart: unless-stopped
+    container_name: traefik
+    command:
+      - "--entrypoints.web.address=:80"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=true"
+      - "--api.dashboard=true"
+      - "--log.level=INFO"
+      - "--api.insecure=true"  # <--- Add this line
+      - "--providers.docker.defaultRule=Host(`{{ index .Labels \"com.docker.compose.service\" }}.pi`)"
+    ports:
+      - "80:80"
+      - "8080:8080" # Dashboard
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - ./traefik/rules:/rules
+    labels:
+      - "traefik.enable=true"
+      - traefik.http.services.dashboard.loadbalancer.server.port=8080
+      - "traefik.http.routers.dashboard.middlewares=dashboard_redirect@internal"
+    healthcheck:
+      test: ["CMD", "ping", "-c", "1", "localhost"]
+      interval: 60s
+      retries: 3
+      timeout: 5s
+      start_period: 10s
+      disable: false       # If you want to disable the health check
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    restart: unless-stopped
+    container_name: portainer
+    command: -H unix:///var/run/docker.sock
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    ports:
+      - 9000:9000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.entrypoints=web"
+      - "traefik.http.services.portainer.loadbalancer.server.port=9000"
+
+  smokeping:
+    image: linuxserver/smokeping
+    restart: unless-stopped
+    container_name: smokeping
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Berlin
+    ports:
+      - "90:80"
+    volumes:
+      - ./smokeping/config:/config
+      - ./smokeping/data:/data
+    labels:
+      - "traefik.enable=true"
+
+  trivia:
+    restart: unless-stopped
+    container_name: trivia
+    image: nginx
+    volumes:
+      - ./trivia-app/:/usr/share/nginx/html:ro
+    ports:
+      - 91:80
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.trivia.entrypoints=web"
+      - "traefik.http.services.trivia.loadbalancer.server.port=80"
+      - traefik.http.routers.trivia.rule=Host(`trivia.pi`)
+
+  dozzle:
+    image: amir20/dozzle:latest
+    restart: unless-stopped
+    container_name: dozzle
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dozzle.entrypoints=web"
+    ports:
+      - "9999:8080"  # Optional: for direct IP:port testing
+
+  ytdl:
+    restart: unless-stopped
+    container_name: ytdl
+    volumes:
+      - './yt/appdata:/app/appdata'
+      - './yt/audio:/app/audio'
+      - './yt/video:/app/video'
+      - './yt/subscriptions:/app/subscriptions'
+      - './yt/users:/app/users'
+    image: 'tzahi12345/youtubedl-material:latest'
+    ports:
+      - 17442:17442
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.ytdl.entrypoints=web"
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_DISABLE_LOGIN_FORM=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+    depends_on:
+      - influxdb
+    volumes:
+      - "./grafana/provisioning:/etc/grafana/provisioning"
+    labels:
+      - "traefik.enable=true"
+      - traefik.http.services.grafana.loadbalancer.server.port=3000
+
+  influxdb:
+    image: influxdb:1.8
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    volumes:
+      - ./influx/influxdb-data:/var/lib/influxdb
+    environment:
+      - INFLUXDB_DB=telegraf
+      - INFLUXDB_HTTP_AUTH_ENABLED=false
+    restart: unless-stopped
+
+  telegraf:
+    image: telegraf:1.29
+    container_name: telegraf
+    depends_on:
+      - influxdb
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys:/hostfs/sys:ro
+      - /proc:/hostfs/proc:ro
+      - /etc:/hostfs/etc:ro
+      - /sys/class/thermal:/sys/class/thermal:ro
+      - /run/udev:/run/udev:ro
+    environment:
+      - HOST_ETC=/hostfs/etc
+      - HOST_PROC=/hostfs/proc
+      - HOST_SYS=/hostfs/sys
+      - HOST_MOUNT_PREFIX=/hostfs
+      - DOCKER_GID=992
+    network_mode: "host"
+    restart: unless-stopped
+    privileged: true
+    user: "992:992"  # Docker group user and group ID (GID 992)
+    labels:
+      - traefik.enable=false
+
+
+  speedtest:
+    build: ./speedtest
+    container_name: speedtest
+    environment:
+      - INFLUXDB_HOST=influxdb
+      - INFLUXDB_PORT=8086
+      - INFLUXDB_DB=speedtest_db
+      - INTERVAL_MINUTES=10
+    depends_on:
+      - influxdb
+    labels:
+      - traefik.enable=false
+
+  fritzinfluxdb:
+    container_name: fritzinfluxdb
+    image: bbricardo/fritzinfluxdb:latest
+    restart: unless-stopped
+    volumes:
+      - ./fritzinflux/fritzinfluxdb.ini:/app/fritzinfluxdb.ini
+    depends_on:
+      - influxdb
+
